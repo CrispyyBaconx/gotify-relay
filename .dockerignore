@@ -1,0 +1,6 @@
+.git
+docs/superpowers
+README.md
+Dockerfile
+*.test
+tmp

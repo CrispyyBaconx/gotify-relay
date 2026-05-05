@@ -1,0 +1,30 @@
+server:
+  listen_addr: ":8080"
+
+gotify:
+  url: "${GOTIFY_URL}"
+
+callers:
+  uptime-kuma:
+    token: "${UPTIME_KUMA_RELAY_TOKEN}"
+    groups:
+      - infra
+      - personal
+
+  deploy-hook:
+    token: "${DEPLOY_HOOK_RELAY_TOKEN}"
+    groups:
+      - infra
+
+groups:
+  infra:
+    targets:
+      - name: "bacon-infra"
+        app_token: "${BACON_INFRA_GOTIFY_APP_TOKEN}"
+      - name: "bow-infra"
+        app_token: "${BOW_INFRA_GOTIFY_APP_TOKEN}"
+
+  personal:
+    targets:
+      - name: "bacon-personal"
+        app_token: "${BACON_PERSONAL_GOTIFY_APP_TOKEN}"
