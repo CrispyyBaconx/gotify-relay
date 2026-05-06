@@ -10,12 +10,15 @@ import (
 )
 
 const DefaultListenAddr = ":8080"
+const DefaultSubscriptionsPath = "/data/subscriptions.json"
 
 type Config struct {
-	Server  ServerConfig      `yaml:"server"`
-	Gotify  GotifyConfig      `yaml:"gotify"`
-	Callers map[string]Caller `yaml:"callers"`
-	Groups  map[string]Group  `yaml:"groups"`
+	Server        ServerConfig       `yaml:"server"`
+	Gotify        GotifyConfig       `yaml:"gotify"`
+	Subscriptions SubscriptionConfig `yaml:"subscriptions"`
+	Members       map[string]Member  `yaml:"members"`
+	Channels      map[string]Channel `yaml:"channels"`
+	Callers       map[string]Caller  `yaml:"callers"`
 }
 
 type ServerConfig struct {
@@ -27,17 +30,21 @@ type GotifyConfig struct {
 }
 
 type Caller struct {
-	Token  string   `yaml:"token"`
-	Groups []string `yaml:"groups"`
+	Token    string   `yaml:"token"`
+	Channels []string `yaml:"channels"`
 }
 
-type Group struct {
-	Targets []Target `yaml:"targets"`
+type SubscriptionConfig struct {
+	Path string `yaml:"path"`
 }
 
-type Target struct {
-	Name     string `yaml:"name"`
+type Member struct {
+	Token    string `yaml:"token"`
 	AppToken string `yaml:"app_token"`
+}
+
+type Channel struct {
+	DefaultSubscribed bool `yaml:"default_subscribed"`
 }
 
 func Load(path string) (*Config, error) {
@@ -62,40 +69,45 @@ func (cfg *Config) Validate() error {
 	if cfg.Server.ListenAddr == "" {
 		cfg.Server.ListenAddr = DefaultListenAddr
 	}
+	if cfg.Subscriptions.Path == "" {
+		cfg.Subscriptions.Path = DefaultSubscriptionsPath
+	}
 	if strings.TrimSpace(cfg.Gotify.URL) == "" {
 		return errors.New("gotify.url is required")
+	}
+	if len(cfg.Members) == 0 {
+		return errors.New("at least one member is required")
+	}
+	if len(cfg.Channels) == 0 {
+		return errors.New("at least one channel is required")
 	}
 	if len(cfg.Callers) == 0 {
 		return errors.New("at least one caller is required")
 	}
-	if len(cfg.Groups) == 0 {
-		return errors.New("at least one group is required")
-	}
-
-	for groupName, group := range cfg.Groups {
-		if strings.TrimSpace(groupName) == "" {
-			return errors.New("group name is required")
-		}
-		if len(group.Targets) == 0 {
-			return fmt.Errorf("group %q must have at least one target", groupName)
-		}
-
-		seenTargets := map[string]struct{}{}
-		for i, target := range group.Targets {
-			if strings.TrimSpace(target.Name) == "" {
-				return fmt.Errorf("group %q target %d name is required", groupName, i)
-			}
-			if strings.TrimSpace(target.AppToken) == "" {
-				return fmt.Errorf("group %q target %q app_token is required", groupName, target.Name)
-			}
-			if _, ok := seenTargets[target.Name]; ok {
-				return fmt.Errorf("group %q has duplicate target %q", groupName, target.Name)
-			}
-			seenTargets[target.Name] = struct{}{}
-		}
-	}
 
 	seenTokens := map[string]string{}
+	for memberName, member := range cfg.Members {
+		if strings.TrimSpace(memberName) == "" {
+			return errors.New("member name is required")
+		}
+		if strings.TrimSpace(member.Token) == "" {
+			return fmt.Errorf("member %q token is required", memberName)
+		}
+		if strings.TrimSpace(member.AppToken) == "" {
+			return fmt.Errorf("member %q app_token is required", memberName)
+		}
+		if existing, ok := seenTokens[member.Token]; ok {
+			return fmt.Errorf("member %q token duplicates %s", memberName, existing)
+		}
+		seenTokens[member.Token] = "member " + memberName
+	}
+
+	for channelName := range cfg.Channels {
+		if strings.TrimSpace(channelName) == "" {
+			return errors.New("channel name is required")
+		}
+	}
+
 	for callerName, caller := range cfg.Callers {
 		if strings.TrimSpace(callerName) == "" {
 			return errors.New("caller name is required")
@@ -104,15 +116,15 @@ func (cfg *Config) Validate() error {
 			return fmt.Errorf("caller %q token is required", callerName)
 		}
 		if existing, ok := seenTokens[caller.Token]; ok {
-			return fmt.Errorf("caller %q token duplicates caller %q", callerName, existing)
+			return fmt.Errorf("caller %q token duplicates %s", callerName, existing)
 		}
-		seenTokens[caller.Token] = callerName
-		if len(caller.Groups) == 0 {
-			return fmt.Errorf("caller %q must allow at least one group", callerName)
+		seenTokens[caller.Token] = "caller " + callerName
+		if len(caller.Channels) == 0 {
+			return fmt.Errorf("caller %q must allow at least one channel", callerName)
 		}
-		for _, groupName := range caller.Groups {
-			if _, ok := cfg.Groups[groupName]; !ok {
-				return fmt.Errorf("caller %q references unknown group %q", callerName, groupName)
+		for _, channelName := range caller.Channels {
+			if _, ok := cfg.Channels[channelName]; !ok {
+				return fmt.Errorf("caller %q references unknown channel %q", callerName, channelName)
 			}
 		}
 	}

@@ -25,8 +25,7 @@ func TestGotifyClientPushPostsMessageWithAppToken(t *testing.T) {
 	defer server.Close()
 
 	client := NewGotifyClient(server.URL, server.Client())
-	err := client.Push(t.Context(), config.Target{
-		Name:     "bacon-phone",
+	err := client.Push(t.Context(), "bacon", config.Member{
 		AppToken: "gotify-app-token",
 	}, Message{
 		Title:    "Disk",
@@ -55,8 +54,7 @@ func TestGotifyClientPushReturnsErrorForNonSuccessStatus(t *testing.T) {
 	defer server.Close()
 
 	client := NewGotifyClient(server.URL, server.Client())
-	err := client.Push(t.Context(), config.Target{
-		Name:     "bacon-phone",
+	err := client.Push(t.Context(), "bacon", config.Member{
 		AppToken: "secret-gotify-token",
 	}, Message{Message: "disk full"})
 	if err == nil {

@@ -12,16 +12,19 @@ func TestLoadValidConfig(t *testing.T) {
 gotify:
   url: "https://gotify.example.com"
 
+members:
+  bacon:
+    token: "bacon-member-token"
+    app_token: "bacon-gotify-token"
+
+channels:
+  infra:
+    default_subscribed: true
+
 callers:
   uptime-kuma:
     token: "relay-token"
-    groups: ["infra"]
-
-groups:
-  infra:
-    targets:
-      - name: "bacon-phone"
-        app_token: "gotify-app-token"
+    channels: ["infra"]
 `)
 
 	cfg, err := Load(path)
@@ -32,35 +35,45 @@ groups:
 	if cfg.Server.ListenAddr != ":8080" {
 		t.Fatalf("expected default listen addr :8080, got %q", cfg.Server.ListenAddr)
 	}
+	if cfg.Subscriptions.Path != "/data/subscriptions.json" {
+		t.Fatalf("expected default subscription path, got %q", cfg.Subscriptions.Path)
+	}
 	if cfg.Gotify.URL != "https://gotify.example.com" {
 		t.Fatalf("unexpected gotify url: %q", cfg.Gotify.URL)
 	}
+	if cfg.Members["bacon"].Token != "bacon-member-token" {
+		t.Fatalf("member token was not loaded")
+	}
+	if !cfg.Channels["infra"].DefaultSubscribed {
+		t.Fatalf("channel default was not loaded")
+	}
 	if cfg.Callers["uptime-kuma"].Token != "relay-token" {
 		t.Fatalf("caller token was not loaded")
-	}
-	if got := cfg.Groups["infra"].Targets[0].Name; got != "bacon-phone" {
-		t.Fatalf("unexpected target name: %q", got)
 	}
 }
 
 func TestLoadExpandsEnvironmentVariables(t *testing.T) {
 	t.Setenv("GOTIFY_URL", "https://gotify.example.com")
 	t.Setenv("RELAY_TOKEN", "relay-token")
+	t.Setenv("MEMBER_TOKEN", "member-token")
 	t.Setenv("APP_TOKEN", "gotify-app-token")
 	path := writeConfig(t, `
 gotify:
   url: "${GOTIFY_URL}"
 
+members:
+  bacon:
+    token: "${MEMBER_TOKEN}"
+    app_token: "${APP_TOKEN}"
+
+channels:
+  infra:
+    default_subscribed: true
+
 callers:
   uptime-kuma:
     token: "${RELAY_TOKEN}"
-    groups: ["infra"]
-
-groups:
-  infra:
-    targets:
-      - name: "bacon-phone"
-        app_token: "${APP_TOKEN}"
+    channels: ["infra"]
 `)
 
 	cfg, err := Load(path)
@@ -74,85 +87,94 @@ groups:
 	if cfg.Callers["uptime-kuma"].Token != "relay-token" {
 		t.Fatalf("expected env-expanded relay token")
 	}
-	if cfg.Groups["infra"].Targets[0].AppToken != "gotify-app-token" {
+	if cfg.Members["bacon"].Token != "member-token" {
+		t.Fatalf("expected env-expanded member token")
+	}
+	if cfg.Members["bacon"].AppToken != "gotify-app-token" {
 		t.Fatalf("expected env-expanded app token")
 	}
 }
 
 func TestLoadRejectsMissingGotifyURL(t *testing.T) {
 	path := writeConfig(t, `
+members:
+  bacon:
+    token: "member-token"
+    app_token: "gotify-token"
+channels:
+  infra:
+    default_subscribed: true
 callers:
   app:
     token: "relay-token"
-    groups: ["infra"]
-groups:
-  infra:
-    targets:
-      - name: "bacon"
-        app_token: "gotify-token"
+    channels: ["infra"]
 `)
 
 	_, err := Load(path)
 	assertErrorContains(t, err, "gotify.url")
 }
 
-func TestLoadRejectsCallerGroupThatDoesNotExist(t *testing.T) {
+func TestLoadRejectsCallerChannelThatDoesNotExist(t *testing.T) {
 	path := writeConfig(t, `
 gotify:
   url: "https://gotify.example.com"
+members:
+  bacon:
+    token: "member-token"
+    app_token: "gotify-token"
+channels:
+  infra:
+    default_subscribed: true
 callers:
   app:
     token: "relay-token"
-    groups: ["missing"]
-groups:
-  infra:
-    targets:
-      - name: "bacon"
-        app_token: "gotify-token"
+    channels: ["missing"]
 `)
 
 	_, err := Load(path)
-	assertErrorContains(t, err, "unknown group")
+	assertErrorContains(t, err, "unknown channel")
 }
 
-func TestLoadRejectsTargetWithoutAppToken(t *testing.T) {
+func TestLoadRejectsMemberWithoutAppToken(t *testing.T) {
 	path := writeConfig(t, `
 gotify:
   url: "https://gotify.example.com"
+members:
+  bacon:
+    token: "member-token"
+    app_token: ""
+channels:
+  infra:
+    default_subscribed: true
 callers:
   app:
     token: "relay-token"
-    groups: ["infra"]
-groups:
-  infra:
-    targets:
-      - name: "bacon"
-        app_token: ""
+    channels: ["infra"]
 `)
 
 	_, err := Load(path)
 	assertErrorContains(t, err, "app_token")
 }
 
-func TestLoadRejectsDuplicateTargetNamesInGroup(t *testing.T) {
+func TestLoadRejectsDuplicateTokensAcrossMembersAndCallers(t *testing.T) {
 	path := writeConfig(t, `
 gotify:
   url: "https://gotify.example.com"
+members:
+  bacon:
+    token: "shared-token"
+    app_token: "gotify-token"
+channels:
+  infra:
+    default_subscribed: true
 callers:
   app:
-    token: "relay-token"
-    groups: ["infra"]
-groups:
-  infra:
-    targets:
-      - name: "bacon"
-        app_token: "gotify-token-1"
-      - name: "bacon"
-        app_token: "gotify-token-2"
+    token: "shared-token"
+    channels: ["infra"]
 `)
 
 	_, err := Load(path)
-	assertErrorContains(t, err, "duplicate target")
+	assertErrorContains(t, err, "duplicates")
 }
 
 func writeConfig(t *testing.T, body string) string {
