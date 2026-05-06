@@ -27,34 +27,34 @@ func NewGotifyClient(baseURL string, httpClient *http.Client) *GotifyClient {
 	}
 }
 
-func (c *GotifyClient) Push(ctx context.Context, target config.Target, message Message) error {
+func (c *GotifyClient) Push(ctx context.Context, memberName string, member config.Member, message Message) error {
 	body, err := json.Marshal(message)
 	if err != nil {
-		return fmt.Errorf("encode message for target %q: %w", target.Name, err)
+		return fmt.Errorf("encode message for member %q: %w", memberName, err)
 	}
 
 	endpoint, err := url.Parse(c.baseURL + "/message")
 	if err != nil {
-		return fmt.Errorf("build gotify URL for target %q: %w", target.Name, err)
+		return fmt.Errorf("build gotify URL for member %q: %w", memberName, err)
 	}
 	query := endpoint.Query()
-	query.Set("token", target.AppToken)
+	query.Set("token", member.AppToken)
 	endpoint.RawQuery = query.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("build request for target %q: %w", target.Name, err)
+		return fmt.Errorf("build request for member %q: %w", memberName, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("push to target %q: %w", target.Name, err)
+		return fmt.Errorf("push to member %q: %w", memberName, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return fmt.Errorf("push to target %q failed with status %d", target.Name, resp.StatusCode)
+		return fmt.Errorf("push to member %q failed with status %d", memberName, resp.StatusCode)
 	}
 
 	return nil

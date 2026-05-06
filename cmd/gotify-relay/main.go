@@ -9,6 +9,7 @@ import (
 
 	"gotify-relay/internal/config"
 	"gotify-relay/internal/relay"
+	"gotify-relay/internal/subscriptions"
 )
 
 func main() {
@@ -26,9 +27,13 @@ func main() {
 	gotifyClient := relay.NewGotifyClient(cfg.Gotify.URL, &http.Client{
 		Timeout: 10 * time.Second,
 	})
+	subscriptionStore, err := subscriptions.NewJSONStore(cfg.Subscriptions.Path, cfg)
+	if err != nil {
+		log.Fatalf("load subscriptions: %v", err)
+	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/alert/", relay.NewHandler(cfg, gotifyClient))
+	mux.Handle("/", relay.NewHandler(cfg, subscriptionStore, gotifyClient))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
