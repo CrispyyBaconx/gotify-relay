@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"gotify-relay/internal/callers"
 	"gotify-relay/internal/config"
 	"gotify-relay/internal/subscriptions"
 )
@@ -222,7 +223,7 @@ func testHandlerWithStore(t *testing.T, pusher Pusher, store SubscriptionStore) 
 		pusher = &recordingPusher{}
 	}
 
-	return NewHandler(testConfig(), store, pusher)
+	return NewHandler(testConfig(), store, pusher, testCallerStore())
 }
 
 func testConfig() *config.Config {
@@ -230,7 +231,6 @@ func testConfig() *config.Config {
 		Gotify: config.GotifyConfig{URL: "https://gotify.example.com"},
 		Callers: map[string]config.Caller{
 			"infra-app": {
-				Token:    "infra-token",
 				Channels: []string{"infra"},
 			},
 		},
@@ -239,13 +239,48 @@ func testConfig() *config.Config {
 			"bow":   {Token: "bow-member-token", AppToken: "gotify-token-b"},
 		},
 		Channels: map[string]config.Channel{
-			"deploys": {DefaultSubscribed: false},
-			"infra":   {DefaultSubscribed: true},
-			"personal": {
-				DefaultSubscribed: false,
-			},
+			"deploys":  {DefaultSubscribed: false},
+			"infra":    {DefaultSubscribed: true},
+			"personal": {DefaultSubscribed: false},
 		},
 	}
+}
+
+func testCallerStore() *mockCallerStore {
+	return &mockCallerStore{
+		tokens: map[string]string{
+			"infra-app": "infra-token",
+		},
+		callers: map[string][]string{
+			"infra-app": {"infra"},
+		},
+	}
+}
+
+type mockCallerStore struct {
+	tokens  map[string]string
+	callers map[string][]string
+}
+
+func (m *mockCallerStore) ByToken(token string) (string, bool) {
+	for name, t := range m.tokens {
+		if t == token {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+func (m *mockCallerStore) List() []callers.CallerInfo {
+	var out []callers.CallerInfo
+	for name, token := range m.tokens {
+		out = append(out, callers.CallerInfo{
+			Name:     name,
+			Token:    token,
+			Channels: m.callers[name],
+		})
+	}
+	return out
 }
 
 func testStore(t *testing.T) *subscriptions.JSONStore {

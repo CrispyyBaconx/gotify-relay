@@ -5,8 +5,10 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
+	"gotify-relay/internal/callers"
 	"gotify-relay/internal/config"
 	"gotify-relay/internal/relay"
 	"gotify-relay/internal/subscriptions"
@@ -32,8 +34,14 @@ func main() {
 		log.Fatalf("load subscriptions: %v", err)
 	}
 
+	callerTokenPath := filepath.Join(filepath.Dir(cfg.Subscriptions.Path), "caller-tokens.json")
+	callerStore, err := callers.NewJSONStore(callerTokenPath, cfg)
+	if err != nil {
+		log.Fatalf("load caller tokens: %v", err)
+	}
+
 	mux := http.NewServeMux()
-	mux.Handle("/", relay.NewHandler(cfg, subscriptionStore, gotifyClient))
+	mux.Handle("/", relay.NewHandler(cfg, subscriptionStore, gotifyClient, callerStore))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

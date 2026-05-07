@@ -23,7 +23,6 @@ channels:
 
 callers:
   uptime-kuma:
-    token: "relay-token"
     channels: ["infra"]
 `)
 
@@ -47,14 +46,13 @@ callers:
 	if !cfg.Channels["infra"].DefaultSubscribed {
 		t.Fatalf("channel default was not loaded")
 	}
-	if cfg.Callers["uptime-kuma"].Token != "relay-token" {
-		t.Fatalf("caller token was not loaded")
+	if len(cfg.Callers["uptime-kuma"].Channels) != 1 {
+		t.Fatalf("caller channels were not loaded")
 	}
 }
 
 func TestLoadExpandsEnvironmentVariables(t *testing.T) {
 	t.Setenv("GOTIFY_URL", "https://gotify.example.com")
-	t.Setenv("RELAY_TOKEN", "relay-token")
 	t.Setenv("MEMBER_TOKEN", "member-token")
 	t.Setenv("APP_TOKEN", "gotify-app-token")
 	path := writeConfig(t, `
@@ -72,7 +70,6 @@ channels:
 
 callers:
   uptime-kuma:
-    token: "${RELAY_TOKEN}"
     channels: ["infra"]
 `)
 
@@ -83,9 +80,6 @@ callers:
 
 	if cfg.Gotify.URL != "https://gotify.example.com" {
 		t.Fatalf("expected env-expanded Gotify URL, got %q", cfg.Gotify.URL)
-	}
-	if cfg.Callers["uptime-kuma"].Token != "relay-token" {
-		t.Fatalf("expected env-expanded relay token")
 	}
 	if cfg.Members["bacon"].Token != "member-token" {
 		t.Fatalf("expected env-expanded member token")
@@ -106,7 +100,6 @@ channels:
     default_subscribed: true
 callers:
   app:
-    token: "relay-token"
     channels: ["infra"]
 `)
 
@@ -127,7 +120,6 @@ channels:
     default_subscribed: true
 callers:
   app:
-    token: "relay-token"
     channels: ["missing"]
 `)
 
@@ -148,7 +140,6 @@ channels:
     default_subscribed: true
 callers:
   app:
-    token: "relay-token"
     channels: ["infra"]
 `)
 
@@ -156,20 +147,22 @@ callers:
 	assertErrorContains(t, err, "app_token")
 }
 
-func TestLoadRejectsDuplicateTokensAcrossMembersAndCallers(t *testing.T) {
+func TestLoadRejectsDuplicateMemberTokens(t *testing.T) {
 	path := writeConfig(t, `
 gotify:
   url: "https://gotify.example.com"
 members:
-  bacon:
+  alice:
     token: "shared-token"
-    app_token: "gotify-token"
+    app_token: "gotify-token-a"
+  bob:
+    token: "shared-token"
+    app_token: "gotify-token-b"
 channels:
   infra:
     default_subscribed: true
 callers:
   app:
-    token: "shared-token"
     channels: ["infra"]
 `)
 

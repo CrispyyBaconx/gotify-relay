@@ -30,7 +30,6 @@ type GotifyConfig struct {
 }
 
 type Caller struct {
-	Token    string   `yaml:"token"`
 	Channels []string `yaml:"channels"`
 }
 
@@ -112,13 +111,6 @@ func (cfg *Config) Validate() error {
 		if strings.TrimSpace(callerName) == "" {
 			return errors.New("caller name is required")
 		}
-		if strings.TrimSpace(caller.Token) == "" {
-			return fmt.Errorf("caller %q token is required", callerName)
-		}
-		if existing, ok := seenTokens[caller.Token]; ok {
-			return fmt.Errorf("caller %q token duplicates %s", callerName, existing)
-		}
-		seenTokens[caller.Token] = "caller " + callerName
 		if len(caller.Channels) == 0 {
 			return fmt.Errorf("caller %q must allow at least one channel", callerName)
 		}

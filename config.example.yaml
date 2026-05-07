@@ -26,13 +26,14 @@ channels:
   personal:
     default_subscribed: false
 
+# Caller tokens are auto-generated on startup and persisted
+# to /data/caller-tokens.json. Use GET /callers with a member
+# token to retrieve them.
 callers:
   uptime-kuma:
-    token: "${UPTIME_KUMA_RELAY_TOKEN}"
     channels:
       - infra
 
   deploy-hook:
-    token: "${DEPLOY_HOOK_RELAY_TOKEN}"
     channels:
       - deploys

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"gotify-relay/internal/callers"
 	"gotify-relay/internal/config"
 	"gotify-relay/internal/subscriptions"
 )
@@ -51,33 +52,35 @@ type SubscriptionsResponse struct {
 	Subscriptions []subscriptions.Subscription `json:"subscriptions"`
 }
 
+type CallerStore interface {
+	ByToken(token string) (name string, ok bool)
+	List() []callers.CallerInfo
+}
+
 type Handler struct {
-	cfg          *config.Config
-	store        SubscriptionStore
-	pusher       Pusher
-	callersByKey map[string]callerAccess
-	membersByKey map[string]string
+	cfg              *config.Config
+	store            SubscriptionStore
+	pusher           Pusher
+	callerStore      CallerStore
+	callerChannels   map[string]map[string]struct{}
+	membersByKey     map[string]string
 }
 
-type callerAccess struct {
-	name     string
-	channels map[string]struct{}
-}
-
-func NewHandler(cfg *config.Config, store SubscriptionStore, pusher Pusher) http.Handler {
+func NewHandler(cfg *config.Config, store SubscriptionStore, pusher Pusher, callerStore CallerStore) http.Handler {
 	h := &Handler{
-		cfg:          cfg,
-		store:        store,
-		pusher:       pusher,
-		callersByKey: map[string]callerAccess{},
-		membersByKey: map[string]string{},
+		cfg:            cfg,
+		store:          store,
+		pusher:         pusher,
+		callerStore:    callerStore,
+		callerChannels: map[string]map[string]struct{}{},
+		membersByKey:   map[string]string{},
 	}
 	for name, caller := range cfg.Callers {
-		access := callerAccess{name: name, channels: map[string]struct{}{}}
-		for _, channel := range caller.Channels {
-			access.channels[channel] = struct{}{}
+		channels := map[string]struct{}{}
+		for _, ch := range caller.Channels {
+			channels[ch] = struct{}{}
 		}
-		h.callersByKey[caller.Token] = access
+		h.callerChannels[name] = channels
 	}
 	for name, member := range cfg.Members {
 		h.membersByKey[member.Token] = name
@@ -90,6 +93,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if channel, ok := strings.CutPrefix(path, "alert/"); ok {
 		h.handleAlert(w, r, channel)
+		return
+	}
+	if path == "callers" {
+		h.handleCallers(w, r)
 		return
 	}
 	if path == "channels" {
@@ -118,7 +125,7 @@ func (h *Handler) handleAlert(w http.ResponseWriter, r *http.Request, channelNam
 		return
 	}
 
-	caller, ok := h.authenticateCaller(r)
+	callerName, ok := h.authenticateCaller(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
@@ -129,7 +136,12 @@ func (h *Handler) handleAlert(w http.ResponseWriter, r *http.Request, channelNam
 		return
 	}
 
-	if _, ok := caller.channels[channelName]; !ok {
+	channels, exists := h.callerChannels[callerName]
+	if !exists {
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	if _, ok := channels[channelName]; !ok {
 		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
@@ -181,6 +193,18 @@ func (h *Handler) handleChannels(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string][]ChannelResponse{"channels": channels})
+}
+
+func (h *Handler) handleCallers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, ok := h.authenticateMember(r); !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string][]callers.CallerInfo{"callers": h.callerStore.List()})
 }
 
 func (h *Handler) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
@@ -239,13 +263,12 @@ func (h *Handler) handleSubscription(w http.ResponseWriter, r *http.Request, cha
 	})
 }
 
-func (h *Handler) authenticateCaller(r *http.Request) (callerAccess, bool) {
+func (h *Handler) authenticateCaller(r *http.Request) (string, bool) {
 	token, ok := bearerToken(r)
 	if !ok {
-		return callerAccess{}, false
+		return "", false
 	}
-	caller, ok := h.callersByKey[token]
-	return caller, ok
+	return h.callerStore.ByToken(token)
 }
 
 func (h *Handler) authenticateMember(r *http.Request) (string, bool) {
