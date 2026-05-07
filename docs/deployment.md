@@ -15,7 +15,7 @@
 
 Files in `/data`:
 - `subscriptions.json` — per-member channel subscription state
-- `caller-tokens.json` — auto-generated caller tokens (created on first startup)
+- `caller-tokens.json` — caller tokens (generated once per caller, persisted across restarts)
 
 ## Environment variables
 
@@ -27,7 +27,7 @@ Set in Coolify. The config.yaml references these via `${...}` syntax — they ar
 | `<MEMBER>_GOTIFY_APP_TOKEN` | Gotify app token for a member |
 | `<MEMBER>_MEMBER_TOKEN` | Relay auth token for a member |
 
-Caller tokens are **not** configured as env vars. They are auto-generated on startup and persisted to `/data/caller-tokens.json`. Retrieve them via `GET /callers` with a member token.
+Caller tokens are **not** configured as env vars. They are auto-generated when a caller is first added to config and persisted to `/data/caller-tokens.json`. Tokens are stable across restarts and redeploys. Retrieve them via `GET /callers` with a member token.
 
 ## Common operations
 
@@ -92,5 +92,5 @@ curl -H "Authorization: Bearer $MEMBER_TOKEN" https://relay.example.com/callers
 ## Adding a new caller
 
 1. Add the caller to config.yaml under `callers:` with its allowed channels.
-2. Redeploy. A token is auto-generated on startup.
+2. Redeploy. A token is generated for the new caller and persisted.
 3. Retrieve the token via `GET /callers` with a member token.
